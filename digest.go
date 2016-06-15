@@ -22,7 +22,7 @@ type DigestAuth struct {
 	Secrets          SecretProvider
 	PlainTextSecrets bool
 
-	/* 
+	/*
 	 Approximate size of Client's Cache. When actual number of
 	 tracked client nonces exceeds
 	 ClientCacheSize+ClientCacheTolerance, ClientCacheTolerance*2
@@ -57,7 +57,7 @@ func (c digest_cache) Swap(i, j int) {
 /*
  Remove count oldest entries from DigestAuth.clients
 */
-func (a *DigestAuth) Purge(count int) {
+func (a *DigestAuth) purge(count int) {
 	entries := make([]digest_cache_entry, 0, len(a.clients))
 	for nonce, client := range a.clients {
 		entries = append(entries, digest_cache_entry{nonce, client.last_seen})
@@ -74,8 +74,11 @@ func (a *DigestAuth) Purge(count int) {
  (or requires reauthentication).
 */
 func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
 	if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
-		a.Purge(a.ClientCacheTolerance * 2)
+		a.purge(a.ClientCacheTolerance * 2)
 	}
 	nonce := RandomKey()
 	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
@@ -108,7 +111,7 @@ func DigestAuthParams(r *http.Request) map[string]string {
 	return result
 }
 
-/* 
+/*
  Check if request contains valid authentication data. Returns a pair
  of username, authinfo where username is the name of the authenticated
  user or an empty string and authinfo is the contents for the optional
@@ -178,7 +181,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 const DefaultClientCacheSize = 1000
 const DefaultClientCacheTolerance = 100
 
-/* 
+/*
  Wrap returns an Authenticator which uses HTTP Digest
  authentication. Arguments:
 
@@ -201,7 +204,7 @@ func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 	}
 }
 
-/* 
+/*
  JustCheck returns function which converts an http.HandlerFunc into a
  http.HandlerFunc which requires authentication. Username is passed as
  an extra X-Authenticated-Username header.
